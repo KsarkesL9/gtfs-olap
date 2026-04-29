@@ -20,13 +20,13 @@ from __future__ import annotations
 import argparse
 import sys
 
+from loguru import logger
+
 from gtfs_olap.common.errors import ETLError
 from gtfs_olap.common.logging_setup import setup_logging
 from gtfs_olap.config.settings import CACHE_CHECK_EVERY, DATABASE_URL, POLL_INTERVAL_S
 from gtfs_olap.db.connection import check_connection
 from gtfs_olap.rt_etl.runner import run_loop
-
-from loguru import logger
 
 
 def parse_args() -> argparse.Namespace:

@@ -12,12 +12,13 @@ from pathlib import Path
 import httpx
 from loguru import logger
 
+from gtfs_olap.common.errors import ETLError
 from gtfs_olap.config.settings import (
+    HTTP_DOWNLOAD_TIMEOUT_S,
     HTTP_MAX_RETRIES,
     HTTP_RETRY_DELAY_S,
     HTTP_TIMEOUT_S,
 )
-from gtfs_olap.common.errors import ETLError
 
 
 def get_with_retry(
@@ -62,8 +63,6 @@ def stream_to_file(
     Raises:
         ETLError: po wyczerpaniu prób
     """
-    from gtfs_olap.config.settings import HTTP_DOWNLOAD_TIMEOUT_S
-
     if timeout is None:
         timeout = HTTP_DOWNLOAD_TIMEOUT_S
 

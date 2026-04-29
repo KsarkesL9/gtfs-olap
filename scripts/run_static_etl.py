@@ -17,6 +17,8 @@ import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
+from loguru import logger
+
 from gtfs_olap.common.errors import ETLError
 from gtfs_olap.common.logging_setup import setup_logging
 from gtfs_olap.config.settings import DATABASE_URL
@@ -31,8 +33,6 @@ from gtfs_olap.static_etl.transform import (
     build_dim_przystanek,
     build_schedule_lookup,
 )
-
-from loguru import logger
 
 
 def parse_args() -> argparse.Namespace:

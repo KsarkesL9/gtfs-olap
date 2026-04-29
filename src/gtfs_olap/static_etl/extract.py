@@ -7,24 +7,16 @@ DataFrame'y są scalane tabela-po-tabeli z deduplikacją po naturalnym kluczu.
 from __future__ import annotations
 
 import zipfile
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 from loguru import logger
 
-from gtfs_olap.config.gtfs_schema import DEDUP_KEYS, GTFS_FILES
 from gtfs_olap.common.errors import GtfsParseError
+from gtfs_olap.config.gtfs_schema import DEDUP_KEYS, GTFS_FILES
 from gtfs_olap.static_etl.ckan import read_feed_period
-
-
-@dataclass
-class FeedMeta:
-    """Metadane scalonego rozkładu."""
-    package_name: str          # lista nazw paczek oddzielona ' | '
-    feed_start_date: date
-    feed_end_date: date
+from gtfs_olap.static_etl.types import FeedMeta
 
 
 def _load_single_package(extract_dir: Path) -> dict[str, pd.DataFrame]:

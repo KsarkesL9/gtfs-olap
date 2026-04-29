@@ -28,11 +28,22 @@ Startuje TimescaleDB na `localhost:5432` (user/pass: `postgres/postgres`, baza: 
 
 ```bash
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
+```
+
+Aktywacja venv:
+
+```bash
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# Windows (cmd):
+.venv\Scripts\activate.bat
 # Linux/macOS:
 source .venv/bin/activate
+```
 
+Instalacja zależności:
+
+```bash
 pip install -e .
 ```
 

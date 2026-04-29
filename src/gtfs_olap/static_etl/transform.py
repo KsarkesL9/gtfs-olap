@@ -16,7 +16,7 @@ from gtfs_olap.config.gtfs_schema import (
     WEEKDAY_COLUMNS,
     WEEKDAY_NAMES_PL,
 )
-from gtfs_olap.static_etl.extract import FeedMeta
+from gtfs_olap.static_etl.types import FeedMeta
 
 
 # ============================================================================

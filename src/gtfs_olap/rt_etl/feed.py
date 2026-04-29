@@ -17,13 +17,7 @@ from gtfs_olap.config.settings import GTFS_RT_URL, RT_HTTP_TIMEOUT_S
 
 def fetch_feed() -> bytes:
     """Pobiera świeży feed protobuf z retry."""
-    try:
-        resp = get_with_retry(GTFS_RT_URL, timeout=RT_HTTP_TIMEOUT_S)
-        return resp.content
-    except ETLError:
-        raise
-    except Exception as e:
-        raise ETLError(f"Błąd pobierania feedu RT: {e}") from e
+    return get_with_retry(GTFS_RT_URL, timeout=RT_HTTP_TIMEOUT_S).content
 
 
 def parse_feed(data: bytes) -> gtfs_realtime_pb2.FeedMessage:

@@ -9,16 +9,15 @@ uruchomieniu skryptu mamy stan spójny z aktualną paczką GTFS.
 
 from __future__ import annotations
 
+import pandas as pd
 import psycopg
 from loguru import logger
 
+from gtfs_olap.common.errors import DatabaseError
 from gtfs_olap.config.ddl import DDL_DIMENSIONS
 from gtfs_olap.config.gtfs_schema import TABLE_COLUMNS
-from gtfs_olap.common.errors import DatabaseError
 from gtfs_olap.db.connection import copy_dataframe
-from gtfs_olap.static_etl.extract import FeedMeta
-
-import pandas as pd
+from gtfs_olap.static_etl.types import FeedMeta
 
 
 def ensure_schema(conn: psycopg.Connection) -> None:
