@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gtfs-olap"
 version = "0.1.0"
-description = "Kostka OLAP dla strumieni danych transportu publicznego GZM/ZTM Katowice"
+description = "Kostka OLAP dla strumieni danych transportu publicznego GZM Metropolia"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27.0",
@@ -16,4 +16,4 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+include = ["gtfs_olap*"]
