@@ -11,8 +11,12 @@ UNION ALL SELECT 'fakt_opoznienia', COUNT(*) FROM fakt_opoznienia;
 SELECT typ_dnia, COUNT(*) FROM dim_data GROUP BY typ_dnia ORDER BY 2 DESC;
 
 -- 3. Sprawdzanie istnienia sierot czyli pojazdów bez linii, przystanków na których nic się nie zatrzymuje i pojazdów bez operatora
-SELECT 
-    COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM dim_linia dl WHERE dl.linia_id = l.linia_id)) AS sieroty_linia,
-    COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM dim_przystanek dp WHERE dp.przystanek_id = l.przystanek_id)) AS sieroty_przystanek,
-    COUNT(*) FILTER (WHERE l.operator_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dim_operator d WHERE d.operator_id = l.operator_id)) AS sieroty_operator
-FROM lookup_schedule l;
+SELECT
+    COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM dim_linia dl WHERE dl.linia_id = f.linia_id))
+        AS sieroty_linia,
+    COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM dim_przystanek dp WHERE dp.przystanek_id = f.przystanek_id))
+        AS sieroty_przystanek,
+    COUNT(*) FILTER (WHERE f.operator_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM dim_operator d WHERE d.operator_id = f.operator_id))
+        AS sieroty_operator
+FROM fakt_opoznienia f;
