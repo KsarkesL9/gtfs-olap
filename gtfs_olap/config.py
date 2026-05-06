@@ -1,5 +1,3 @@
-"""Stałe, mapowania, DDL - wszystko w jednym miejscu."""
-
 from zoneinfo import ZoneInfo
 
 # Hardcode
