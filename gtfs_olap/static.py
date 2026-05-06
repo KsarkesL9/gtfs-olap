@@ -42,7 +42,7 @@ class FeedMeta:
 # 2. Każda paczka pokrywa tylko WYCINEK kalendarza (1-10 dni). Żeby mieć pełen
 #    rozkład na 14 dni trzeba scalić 7-9 paczek.
 # 3. Prawdziwy okres obowiązywania jest tylko w feed_info.txt WEWNĄTRZ ZIP-a.
-#    Z nazwy pliku tego nie wyczytasz.
+#    Z nazwy pliku tego nie da się wyczytać.
 # Rozwiązanie: ściągamy wszystko po kolei, sprawdzamy okres,
 # zbieramy aż pokryjemy 14 dni. Zazwyczaj 7-9 paczek po ~10 MB.
 
