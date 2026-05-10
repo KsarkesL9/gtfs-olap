@@ -41,7 +41,6 @@ DEDUP_KEYS = {
     "calendar_dates": ["service_id", "date", "exception_type"],
     "service_ext": ["service_id", "name"],
     "operators_ext": ["operator_id"],
-    "contracts_ext": ["contract_id"],
 }
 
 DDL = """
@@ -63,10 +62,7 @@ CREATE TABLE IF NOT EXISTS dim_przystanek (
 );
 CREATE TABLE IF NOT EXISTS dim_operator (
     operator_id         TEXT PRIMARY KEY,
-    nazwa               TEXT,
-    numer_umowy         TEXT,
-    umowa_od            DATE,
-    umowa_do            DATE
+    nazwa               TEXT
 );
 CREATE TABLE IF NOT EXISTS dim_data (
     data                DATE PRIMARY KEY,
@@ -77,36 +73,46 @@ CREATE TABLE IF NOT EXISTS dim_data (
     nazwa_dnia          TEXT,
     typ_dnia            TEXT
 );
--- Lookup dla RT - NIE wymiar OLAP
+CREATE TABLE IF NOT EXISTS dim_wersja_rozkladu (
+    wersja_id      SERIAL PRIMARY KEY,
+    nazwa_paczki   TEXT,
+    obowiazuje_od  DATE,
+    obowiazuje_do  DATE,
+    zaladowano     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wersja_obowiazuje
+    ON dim_wersja_rozkladu (obowiazuje_od, obowiazuje_do);
+
+-- Lookup dla RT - NIE wymiar OLAP. Wersjonowany append-only.
 CREATE TABLE IF NOT EXISTS lookup_schedule (
+    wersja_id            INT NOT NULL REFERENCES dim_wersja_rozkladu(wersja_id),
     trip_id              TEXT NOT NULL,
     przystanek_id        TEXT NOT NULL,
     stop_sequence        INT  NOT NULL,
     rozkladowy_przyjazd  TEXT,
     linia_id             TEXT,
     kierunek             TEXT,
+    kierunek_opis        TEXT,
     operator_id          TEXT,
-    PRIMARY KEY (trip_id, przystanek_id, stop_sequence)
+    offset_dnia          SMALLINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (wersja_id, trip_id, przystanek_id, stop_sequence)
 );
-CREATE INDEX IF NOT EXISTS idx_lookup_trip ON lookup_schedule (trip_id);
-
-CREATE TABLE IF NOT EXISTS gtfs_meta (
-    loaded_at         TIMESTAMPTZ DEFAULT NOW(),
-    package_name      TEXT,
-    feed_start_date   DATE,
-    feed_end_date     DATE
-);
+CREATE INDEX IF NOT EXISTS idx_lookup_trip
+    ON lookup_schedule (wersja_id, trip_id);
 
 CREATE TABLE IF NOT EXISTS fakt_opoznienia (
     ts                   TIMESTAMPTZ NOT NULL,
+    wersja_id            INT,
     trip_id              TEXT NOT NULL,
     przystanek_id        TEXT NOT NULL,
     stop_sequence        INT  NOT NULL,
     linia_id             TEXT,
     operator_id          TEXT,
     kierunek             TEXT,
+    kierunek_opis        TEXT,
     data_kursu           DATE,
-    opoznienie_s         INT NOT NULL,
+    opoznienie_s         INT,
+    status               TEXT NOT NULL DEFAULT 'OBSERWACJA',
     PRIMARY KEY (trip_id, przystanek_id, stop_sequence, ts)
 );
 SELECT create_hypertable('fakt_opoznienia', 'ts',
@@ -116,4 +122,22 @@ CREATE INDEX IF NOT EXISTS idx_fakt_linia_ts
     ON fakt_opoznienia (linia_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_fakt_operator_ts
     ON fakt_opoznienia (operator_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fakt_wersja
+    ON fakt_opoznienia (wersja_id);
+
+CREATE TABLE IF NOT EXISTS fakt_etl_run (
+    started_at        TIMESTAMPTZ NOT NULL,
+    snapshot_ts       TIMESTAMPTZ,
+    obserwacje        INT,
+    wstawione         INT,
+    czas_s            NUMERIC(6, 3),
+    status            TEXT NOT NULL,
+    blad              TEXT,
+    PRIMARY KEY (started_at)
+);
+SELECT create_hypertable('fakt_etl_run', 'started_at',
+    chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_etl_status_started
+    ON fakt_etl_run (status, started_at DESC);
 """

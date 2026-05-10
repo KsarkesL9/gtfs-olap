@@ -112,7 +112,7 @@ GTFS_FILES = [
     "agency", "routes", "routes_ext", "stops", "stops_ext",
     "stops_attributes_ext", "communities_ext", "trips", "trips_ext",
     "stop_times", "calendar", "calendar_dates", "service_ext",
-    "operators_ext", "contracts_ext", "feed_info",
+    "operators_ext", "feed_info",
 ]
 
 
@@ -188,18 +188,7 @@ def _build_dim_przystanek(dfs):
 def _build_dim_operator(dfs):
     out = dfs["operators_ext"][["operator_id", "operator_name"]].copy()
     out.columns = ["operator_id", "nazwa"]
-    contracts = dfs["contracts_ext"]
-    if contracts.empty:
-        for col in ("numer_umowy", "umowa_od", "umowa_do"):
-            out[col] = pd.NA
-        return out
-    c = contracts[["contract_op_id", "contract_number",
-                   "contract_start_date", "contract_end_date"]].copy()
-    c.columns = ["operator_id", "numer_umowy", "umowa_od", "umowa_do"]
-    c["umowa_od"] = pd.to_datetime(c["umowa_od"], format="%Y%m%d", errors="coerce").dt.date
-    c["umowa_do"] = pd.to_datetime(c["umowa_do"], format="%Y%m%d", errors="coerce").dt.date
-    c = c.sort_values("umowa_od", ascending=False).drop_duplicates("operator_id")
-    return out.merge(c, on="operator_id", how="left")
+    return out
 
 
 def _build_dim_data(dfs, meta: FeedMeta):
@@ -235,20 +224,25 @@ def _build_lookup_schedule(dfs):
     """Denormalizacja stop_times + trips + trips_ext.
 
     Cel: w RT ETL jeden lookup po (trip_id, sequence) zwraca rozkładowy czas,
-    linię, operatora kierunek - bez joinów per event."""
+    linię, operatora, kierunek (0/1 + headsign tekstowy) - bez joinów per event. """
     trips = dfs["trips"].merge(
         dfs["trips_ext"][["trip_id", "operator_id"]], on="trip_id", how="left")
     out = dfs["stop_times"].merge(
-        trips[["trip_id", "route_id", "direction_id", "operator_id"]],
+        trips[["trip_id", "route_id", "direction_id", "trip_headsign", "operator_id"]],
         on="trip_id", how="inner")
     out = out[["trip_id", "stop_id", "stop_sequence", "arrival_time",
-               "route_id", "direction_id", "operator_id"]].rename(columns={
+               "route_id", "direction_id", "trip_headsign", "operator_id"]].rename(columns={
         "stop_id": "przystanek_id",
         "route_id": "linia_id",
         "arrival_time": "rozkladowy_przyjazd",
         "direction_id": "kierunek",
+        "trip_headsign": "kierunek_opis",
     })
     out["stop_sequence"] = pd.to_numeric(out["stop_sequence"], errors="coerce").astype("Int64")
+    hh = out["rozkladowy_przyjazd"].str.split(":").str[0]
+    out["offset_dnia"] = (
+        pd.to_numeric(hh, errors="coerce").fillna(0).astype(int) // 24
+    ).astype("int16")
     return out
 
 
@@ -272,26 +266,35 @@ def _load_to_db(dims: dict, lookup: pd.DataFrame, meta: FeedMeta):
     with psycopg.connect(DB_URL) as conn:
         with conn.cursor() as cur:
             cur.execute(DDL)
-            cur.execute("TRUNCATE dim_linia, dim_przystanek, dim_operator, "
-                        "dim_data, lookup_schedule")
+
+            cur.execute(
+                "INSERT INTO dim_wersja_rozkladu "
+                "(nazwa_paczki, obowiazuje_od, obowiazuje_do) "
+                "VALUES (%s, %s, %s) RETURNING wersja_id",
+                (meta.package_name, meta.feed_start_date, meta.feed_end_date)
+            )
+            wersja_id = cur.fetchone()[0]
+            logger.info(f"Nowa wersja rozkładu: {wersja_id}")
+
+            cur.execute("TRUNCATE dim_linia, dim_przystanek, dim_operator, dim_data")
+
         _copy_df(conn, "dim_linia", dims["linia"],
                  ["linia_id", "nazwa_krotka", "nazwa_dluga", "srodek_transportu", "typ_linii"])
         _copy_df(conn, "dim_przystanek", dims["przystanek"],
                  ["przystanek_id", "nazwa", "szer_geo", "dl_geo", "gmina", "miasto", "typ_przystanku"])
         _copy_df(conn, "dim_operator", dims["operator"],
-                 ["operator_id", "nazwa", "numer_umowy", "umowa_od", "umowa_do"])
+                 ["operator_id", "nazwa"])
         _copy_df(conn, "dim_data", dims["data"],
                  ["data", "rok", "miesiac", "tydzien_iso", "dzien_tygodnia", "nazwa_dnia", "typ_dnia"])
-        _copy_df(conn, "lookup_schedule", lookup,
-                 ["trip_id", "przystanek_id", "stop_sequence", "rozkladowy_przyjazd",
-                  "linia_id", "kierunek", "operator_id"])
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO gtfs_meta (package_name, feed_start_date, feed_end_date) "
-                "VALUES (%s, %s, %s)",
-                (meta.package_name, meta.feed_start_date, meta.feed_end_date))
-        conn.commit()
 
+        lookup = lookup.copy()
+        lookup["wersja_id"] = wersja_id
+        _copy_df(conn, "lookup_schedule", lookup,
+                 ["wersja_id", "trip_id", "przystanek_id", "stop_sequence",
+                  "rozkladowy_przyjazd", "linia_id", "kierunek", "kierunek_opis",
+                  "operator_id", "offset_dnia"])
+
+        conn.commit()
 
 # ============================================================================
 # Główna funkcja - łączy wszystko
