@@ -1,4 +1,4 @@
-CREATE MATERIALIZED VIEW ca_opoznienia_15min
+CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_15min
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('15 minutes', ts, 'Europe/Warsaw') AS kwadrans,
@@ -23,9 +23,10 @@ WITH NO DATA;
 SELECT add_continuous_aggregate_policy('ca_opoznienia_15min',
     start_offset      => INTERVAL '7 days',
     end_offset        => INTERVAL '10 minutes',
-    schedule_interval => INTERVAL '5 minutes');
+    schedule_interval => INTERVAL '5 minutes',
+    if_not_exists     => true);
 
-CREATE MATERIALIZED VIEW ca_opoznienia_1h
+CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_1h
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('1 hour', kwadrans, 'Europe/Warsaw') AS godzina,
@@ -46,9 +47,10 @@ WITH NO DATA;
 SELECT add_continuous_aggregate_policy('ca_opoznienia_1h',
     start_offset      => INTERVAL '14 days',
     end_offset        => INTERVAL '30 minutes',
-    schedule_interval => INTERVAL '15 minutes');
+    schedule_interval => INTERVAL '15 minutes',
+    if_not_exists     => true);
 
-CREATE MATERIALIZED VIEW ca_opoznienia_dzien
+CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_dzien
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('1 day', godzina, 'Europe/Warsaw') AS data,
@@ -69,9 +71,10 @@ WITH NO DATA;
 SELECT add_continuous_aggregate_policy('ca_opoznienia_dzien',
     start_offset      => INTERVAL '60 days',
     end_offset        => INTERVAL '2 hours',
-    schedule_interval => INTERVAL '1 hour');
+    schedule_interval => INTERVAL '1 hour',
+    if_not_exists     => true);
 
-CREATE MATERIALIZED VIEW ca_opoznienia_15min_przystanek
+CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_15min_przystanek
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('15 minutes', ts, 'Europe/Warsaw') AS kwadrans,
@@ -93,10 +96,11 @@ WITH NO DATA;
 SELECT add_continuous_aggregate_policy('ca_opoznienia_15min_przystanek',
     start_offset      => INTERVAL '7 days',
     end_offset        => INTERVAL '10 minutes',
-    schedule_interval => INTERVAL '5 minutes');
+    schedule_interval => INTERVAL '5 minutes',
+    if_not_exists     => true);
 
 -- Polityka retencyjna
-SELECT add_retention_policy('fakt_opoznienia', INTERVAL '30 days');
+SELECT add_retention_policy('fakt_opoznienia', INTERVAL '30 days', if_not_exists => true);
 
 -- Polityka retencyjna logów
-SELECT add_retention_policy('fakt_etl_run', INTERVAL '90 days');
+SELECT add_retention_policy('fakt_etl_run', INTERVAL '90 days', if_not_exists => true);

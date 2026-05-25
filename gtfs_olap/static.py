@@ -17,8 +17,8 @@ import psycopg
 from loguru import logger
 
 from gtfs_olap.config import (
-    CKAN_API, DB_URL, DDL, DEDUP_KEYS, TRANSPORT_TYPES, DAYS_PL, WEEKDAY_COLS,
-    DIM_DATA_LOOKBACK_DAYS,
+    CA_DDL, CKAN_API, DB_URL, DDL, DEDUP_KEYS, TRANSPORT_TYPES, DAYS_PL,
+    WEEKDAY_COLS, DIM_DATA_LOOKBACK_DAYS,
 )
 
 ZIP_RE = re.compile(r"schedule_ZTM_(\d{4})\.(\d{2})\.(\d{2})_(\d+)_(\d+)\.zip")
@@ -322,6 +322,14 @@ def _load_to_db(dims: dict, lookup: pd.DataFrame, meta: FeedMeta):
                   "operator_id", "offset_dnia"])
 
         conn.commit()
+
+    # Agregaty ciągłe muszą być w autocommit - TimescaleDB blokuje CREATE
+    # MATERIALIZED VIEW continuous wewnątrz explicit transaction. CA.sql jest
+    # idempotentny, więc bezpiecznie odpala się przy każdym static ETL.
+    with psycopg.connect(DB_URL, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(CA_DDL)
+    logger.info("Agregaty ciągłe i polityki retencji zsynchronizowane")
 
 # ============================================================================
 # Główna funkcja - łączy wszystko

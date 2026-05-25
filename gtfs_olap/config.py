@@ -1,3 +1,4 @@
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 # Hardcode
@@ -142,3 +143,5 @@ SELECT create_hypertable('fakt_etl_run', 'started_at',
 CREATE INDEX IF NOT EXISTS idx_etl_status_started
     ON fakt_etl_run (status, started_at DESC);
 """
+
+CA_DDL = (Path(__file__).parent / "CA.sql").read_text(encoding="utf-8")
