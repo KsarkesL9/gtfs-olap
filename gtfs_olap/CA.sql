@@ -2,6 +2,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_15min
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('15 minutes', ts, 'Europe/Warsaw') AS kwadrans,
+    data_kursu,
     wersja_id,
     linia_id,
     operator_id,
@@ -16,7 +17,7 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'ANULOWANY')                    AS anulowane,
     COUNT(*) FILTER (WHERE status = 'POMINIETY')                    AS pominiete
 FROM fakt_opoznienia
-GROUP BY kwadrans, wersja_id, linia_id, operator_id
+GROUP BY kwadrans, data_kursu, wersja_id, linia_id, operator_id
 WITH NO DATA;
 
 -- Polityka odświeżania
@@ -30,6 +31,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_1h
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('1 hour', kwadrans, 'Europe/Warsaw') AS godzina,
+    data_kursu,
     wersja_id,
     linia_id,
     operator_id,
@@ -41,7 +43,7 @@ SELECT
     MIN(min_opoznienie) AS min_opoznienie,
     MAX(max_opoznienie) AS max_opoznienie
 FROM ca_opoznienia_15min
-GROUP BY godzina, wersja_id, linia_id, operator_id
+GROUP BY godzina, data_kursu, wersja_id, linia_id, operator_id
 WITH NO DATA;
 -- polityka odswieżania
 SELECT add_continuous_aggregate_policy('ca_opoznienia_1h',
@@ -54,6 +56,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_dzien
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('1 day', godzina, 'Europe/Warsaw') AS data,
+    data_kursu,
     wersja_id,
     linia_id,
     operator_id,
@@ -65,7 +68,7 @@ SELECT
     MIN(min_opoznienie) AS min_opoznienie,
     MAX(max_opoznienie) AS max_opoznienie
 FROM ca_opoznienia_1h
-GROUP BY data, wersja_id, linia_id, operator_id
+GROUP BY data, data_kursu, wersja_id, linia_id, operator_id
 WITH NO DATA;
 -- Polityka odświeżania
 SELECT add_continuous_aggregate_policy('ca_opoznienia_dzien',
@@ -78,6 +81,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS ca_opoznienia_15min_przystanek
 WITH (timescaledb.continuous) AS
 SELECT
     time_bucket('15 minutes', ts, 'Europe/Warsaw') AS kwadrans,
+    data_kursu,
     wersja_id,
     przystanek_id,
     linia_id,
@@ -90,7 +94,7 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'ANULOWANY')                    AS anulowane,
     COUNT(*) FILTER (WHERE status = 'POMINIETY')                    AS pominiete
 FROM fakt_opoznienia
-GROUP BY kwadrans, wersja_id, przystanek_id, linia_id
+GROUP BY kwadrans, data_kursu, wersja_id, przystanek_id, linia_id
 WITH NO DATA;
 -- Polityka odświeżania
 SELECT add_continuous_aggregate_policy('ca_opoznienia_15min_przystanek',
