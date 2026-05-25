@@ -18,6 +18,7 @@ from loguru import logger
 
 from gtfs_olap.config import (
     CKAN_API, DB_URL, DDL, DEDUP_KEYS, TRANSPORT_TYPES, DAYS_PL, WEEKDAY_COLS,
+    DIM_DATA_LOOKBACK_DAYS,
 )
 
 ZIP_RE = re.compile(r"schedule_ZTM_(\d{4})\.(\d{2})\.(\d{2})_(\d+)_(\d+)\.zip")
@@ -171,7 +172,6 @@ def _build_dim_przystanek(dfs):
     out["dl_geo"] = pd.to_numeric(out["dl_geo"], errors="coerce")
 
     ext = dfs["stops_ext"][["stop_id"]].rename(columns={"stop_id": "przystanek_id"}).copy()
-    # community_ids/stop_attribute_ids mogą być wielokrotne (oddzielone "_") bierzemy pierwsze
     comm = dict(zip(dfs["communities_ext"]["community_id"],
                     dfs["communities_ext"]["community_name"]))
     ext["gmina"] = dfs["stops_ext"]["community_ids"].fillna("").str.split("_").str[0].map(comm)
@@ -191,8 +191,13 @@ def _build_dim_operator(dfs):
     return out
 
 
-def _build_dim_data(dfs, meta: FeedMeta):
-    """Jeden wiersz na każdy dzień okresu, z typem dnia z service_ext."""
+def _build_dim_data(dfs, start: date, end: date):
+    """Jeden wiersz na każdy dzień okresu [start, end], z typem dnia z service_ext.
+
+    Zakres celowo sięga wstecz poza paczkę GTFS (patrz DIM_DATA_LOOKBACK_DAYS),
+    żeby fakty z całego okna retencji miały do czego JOIN-ować po data_kursu.
+    Dla dat poza calendar.start/end mask jest pusty -> typ_dnia = 'brak rozkładu',
+    a wymiar nadal niesie rok/miesiąc/dzień_tygodnia użyteczne analitycznie."""
     cal = dfs["calendar"].copy()
     cal["start"] = pd.to_datetime(cal["start_date"], format="%Y%m%d").dt.date
     cal["end"] = pd.to_datetime(cal["end_date"], format="%Y%m%d").dt.date
@@ -202,8 +207,8 @@ def _build_dim_data(dfs, meta: FeedMeta):
     type_map = dict(zip(dfs["service_ext"]["service_id"], dfs["service_ext"]["name"]))
 
     rows = []
-    cur = meta.feed_start_date
-    while cur <= meta.feed_end_date:
+    cur = start
+    while cur <= end:
         wd = cur.weekday()
         mask = (cal["start"] <= cur) & (cal["end"] >= cur) & cal[WEEKDAY_COLS[wd]]
         active = set(cal.loc[mask, "service_id"])
@@ -262,6 +267,26 @@ def _copy_df(conn, table: str, df: pd.DataFrame, cols: list[str]):
     logger.info(f"  {table}: {len(df):,} wierszy")
 
 
+def _upsert_df(conn, table: str, df: pd.DataFrame, cols: list[str], pk: list[str]):
+    """COPY do tabeli tymczasowej, potem INSERT ... ON CONFLICT (pk) DO UPDATE.
+
+    TRUNCATE jest niemożliwe odkąd fakt_opoznienia ma FK do wymiarów - usunęłoby
+    referencje istniejących faktów. UPSERT pozwala bezpiecznie re-runować static
+    ETL i naturalnie kumuluje historię w dim_data."""
+    stg = f"_stg_{table}"
+    set_clause = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in pk)
+    pk_clause = ", ".join(pk)
+    with conn.cursor() as cur:
+        cur.execute(f"CREATE TEMP TABLE {stg} (LIKE {table} INCLUDING DEFAULTS) ON COMMIT DROP")
+    _copy_df(conn, stg, df, cols)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {table} ({','.join(cols)}) "
+            f"SELECT {','.join(cols)} FROM {stg} "
+            f"ON CONFLICT ({pk_clause}) DO UPDATE SET {set_clause}"
+        )
+
+
 def _load_to_db(dims: dict, lookup: pd.DataFrame, meta: FeedMeta):
     with psycopg.connect(DB_URL) as conn:
         with conn.cursor() as cur:
@@ -276,16 +301,18 @@ def _load_to_db(dims: dict, lookup: pd.DataFrame, meta: FeedMeta):
             wersja_id = cur.fetchone()[0]
             logger.info(f"Nowa wersja rozkładu: {wersja_id}")
 
-            cur.execute("TRUNCATE dim_linia, dim_przystanek, dim_operator, dim_data")
-
-        _copy_df(conn, "dim_linia", dims["linia"],
-                 ["linia_id", "nazwa_krotka", "nazwa_dluga", "srodek_transportu", "typ_linii"])
-        _copy_df(conn, "dim_przystanek", dims["przystanek"],
-                 ["przystanek_id", "nazwa", "szer_geo", "dl_geo", "gmina", "miasto", "typ_przystanku"])
-        _copy_df(conn, "dim_operator", dims["operator"],
-                 ["operator_id", "nazwa"])
-        _copy_df(conn, "dim_data", dims["data"],
-                 ["data", "rok", "miesiac", "tydzien_iso", "dzien_tygodnia", "nazwa_dnia", "typ_dnia"])
+        _upsert_df(conn, "dim_linia", dims["linia"],
+                   ["linia_id", "nazwa_krotka", "nazwa_dluga", "srodek_transportu", "typ_linii"],
+                   ["linia_id"])
+        _upsert_df(conn, "dim_przystanek", dims["przystanek"],
+                   ["przystanek_id", "nazwa", "szer_geo", "dl_geo", "gmina", "miasto", "typ_przystanku"],
+                   ["przystanek_id"])
+        _upsert_df(conn, "dim_operator", dims["operator"],
+                   ["operator_id", "nazwa"],
+                   ["operator_id"])
+        _upsert_df(conn, "dim_data", dims["data"],
+                   ["data", "rok", "miesiac", "tydzien_iso", "dzien_tygodnia", "nazwa_dnia", "typ_dnia"],
+                   ["data"])
 
         lookup = lookup.copy()
         lookup["wersja_id"] = wersja_id
@@ -320,11 +347,12 @@ def run(horizon_days: int = 14):
         )
         logger.info(f"Scalony rozkład: {today} → {end}, {len(zip_paths)} paczek")
 
+        dim_data_start = today - timedelta(days=DIM_DATA_LOOKBACK_DAYS)
         dims = {
             "linia": _build_dim_linia(dfs),
             "przystanek": _build_dim_przystanek(dfs),
             "operator": _build_dim_operator(dfs),
-            "data": _build_dim_data(dfs, meta),
+            "data": _build_dim_data(dfs, dim_data_start, end),
         }
         lookup = _build_lookup_schedule(dfs)
 

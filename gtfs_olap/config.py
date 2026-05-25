@@ -17,6 +17,8 @@ DAYS_PL = ["poniedziałek", "wtorek", "środa", "czwartek",
 WEEKDAY_COLS = ["monday", "tuesday", "wednesday", "thursday",
                 "friday", "saturday", "sunday"]
 
+DIM_DATA_LOOKBACK_DAYS = 35
+
 # UWAGA. Klucze dedup dla scalania paczek GZM. Większość tabel ma normalny
 # klucz biznesowy ALE calendar i service_ext są popsute - GZM używa tych
 # samych liczb service_id w różnych paczkach do oznaczenia zupełnie różnych
@@ -102,15 +104,14 @@ CREATE INDEX IF NOT EXISTS idx_lookup_trip
 
 CREATE TABLE IF NOT EXISTS fakt_opoznienia (
     ts                   TIMESTAMPTZ NOT NULL,
-    wersja_id            INT,
+    wersja_id            INT  REFERENCES dim_wersja_rozkladu(wersja_id),
     trip_id              TEXT NOT NULL,
-    przystanek_id        TEXT NOT NULL,
+    przystanek_id        TEXT NOT NULL REFERENCES dim_przystanek(przystanek_id),
     stop_sequence        INT  NOT NULL,
-    linia_id             TEXT,
-    operator_id          TEXT,
+    linia_id             TEXT REFERENCES dim_linia(linia_id),
+    operator_id          TEXT REFERENCES dim_operator(operator_id),
     kierunek             TEXT,
-    kierunek_opis        TEXT,
-    data_kursu           DATE,
+    data_kursu           DATE REFERENCES dim_data(data),
     opoznienie_s         INT,
     status               TEXT NOT NULL DEFAULT 'OBSERWACJA',
     PRIMARY KEY (trip_id, przystanek_id, stop_sequence, ts)

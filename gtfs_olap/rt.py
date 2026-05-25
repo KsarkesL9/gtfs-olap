@@ -69,7 +69,6 @@ class ScheduleEntry:
     linia_id: str | None
     operator_id: str | None
     kierunek: str | None
-    kierunek_opis: str | None
     offset_dnia: int
 
 
@@ -122,13 +121,13 @@ class ScheduleCache:
 
             cur.execute("""
                 SELECT trip_id, przystanek_id, stop_sequence, rozkladowy_przyjazd,
-                       linia_id, operator_id, kierunek, kierunek_opis, offset_dnia
+                       linia_id, operator_id, kierunek, offset_dnia
                 FROM lookup_schedule WHERE wersja_id = %s
             """, (self.wersja_id,))
             self._cache = {}
             self._by_trip = {}
-            for trip_id, stop_id, seq, arr, lin, op, kier, kier_opis, off in cur:
-                entry = ScheduleEntry(stop_id, arr, lin, op, kier, kier_opis, off)
+            for trip_id, stop_id, seq, arr, lin, op, kier, off in cur:
+                entry = ScheduleEntry(stop_id, arr, lin, op, kier, off)
                 self._cache[(trip_id, seq)] = entry
                 self._by_trip.setdefault(trip_id, []).append((seq, entry))
         logger.info(f"Cache: {len(self._cache):,} wpisów, "
@@ -172,8 +171,7 @@ def _process_feed(feed, cache: ScheduleCache) -> list[tuple]:
                 data_kursu = snapshot_local_date - timedelta(days=entry.offset_dnia)
                 rows.append((
                     snapshot_dt, wersja_id, trip_id, entry.stop_id, seq,
-                    entry.linia_id, entry.operator_id,
-                    entry.kierunek, entry.kierunek_opis,
+                    entry.linia_id, entry.operator_id, entry.kierunek,
                     data_kursu, None, "ANULOWANY",
                 ))
             continue
@@ -192,8 +190,7 @@ def _process_feed(feed, cache: ScheduleCache) -> list[tuple]:
             if stu.schedule_relationship == STOP_SKIPPED:
                 rows.append((
                     snapshot_dt, wersja_id, trip_id, entry.stop_id, stu.stop_sequence,
-                    entry.linia_id, entry.operator_id,
-                    entry.kierunek, entry.kierunek_opis,
+                    entry.linia_id, entry.operator_id, entry.kierunek,
                     data_kursu, None, "POMINIETY",
                 ))
                 continue
@@ -204,8 +201,7 @@ def _process_feed(feed, cache: ScheduleCache) -> list[tuple]:
 
             rows.append((
                 snapshot_dt, wersja_id, trip_id, entry.stop_id, stu.stop_sequence,
-                entry.linia_id, entry.operator_id,
-                entry.kierunek, entry.kierunek_opis,
+                entry.linia_id, entry.operator_id, entry.kierunek,
                 data_kursu, stu.arrival.delay, "OBSERWACJA",
             ))
     return rows
@@ -215,7 +211,7 @@ def _insert_rows(conn, rows: list[tuple]):
     if not rows:
         return 0
     cols = ("ts", "wersja_id", "trip_id", "przystanek_id", "stop_sequence", "linia_id",
-            "operator_id", "kierunek", "kierunek_opis",
+            "operator_id", "kierunek",
             "data_kursu", "opoznienie_s", "status")
 
     buf = io.StringIO()
@@ -282,7 +278,6 @@ def run_loop(interval_s: int = 20, once: bool = False):
     - Pętla try/except wokół iteracji - żaden nieprzewidziany wyjątek
       jej nie zabije, jedynie zostanie zalogowany"""
 
-    # Inicjalizacja DDL na osobnym, krótkotrwałym connection
     init_conn = _connect_with_retry()
     try:
         with init_conn.cursor() as cur:
@@ -293,7 +288,7 @@ def run_loop(interval_s: int = 20, once: bool = False):
 
     cache = ScheduleCache()
     conn = _connect_with_retry()
-    cache.load()  # otwiera własne połączenie wewnątrz
+    cache.load()  
 
     last_snapshot_ts = 0
     try:
@@ -306,7 +301,6 @@ def run_loop(interval_s: int = 20, once: bool = False):
             status = "OK"
             blad = None
 
-            # 1 check + ewentualny reconnect
             if not _is_alive(conn):
                 logger.warning("Connection martwy, reconnect...")
                 try:
@@ -314,17 +308,14 @@ def run_loop(interval_s: int = 20, once: bool = False):
                 except Exception:
                     pass
                 conn = _connect_with_retry()
-                cache.load()  # po reconnect zawsze świeży cache
+                cache.load()  
 
-            # 2 Sprawdzenie czy nie ma nowszej wersji rozkładu w DB
-            #    (zastępuje konieczność ręcznego restartu RT po static ETL)
             db_version = cache.current_version_in_db(conn)
             if db_version is not None and db_version != cache.wersja_id:
                 logger.info(f"Wykryto nową wersję rozkładu w DB: "
                             f"{cache.wersja_id} → {db_version}. Reload cache.")
                 cache.load()
 
-            # 3 Główny try wokół całej iteracji - łapie WSZYSTKO
             try:
                 raw = httpx.get(RT_URL, timeout=30.0).content
                 feed = gtfs_realtime_pb2.FeedMessage()
@@ -354,7 +345,6 @@ def run_loop(interval_s: int = 20, once: bool = False):
 
             czas_s = round(time.monotonic() - t_start, 3)
 
-            # 4 Audit log również odporny na zerwany conn
             try:
                 _log_etl_run(conn, started_at, snapshot_ts, obserwacje,
                              wstawione, czas_s, status, blad)
