@@ -249,11 +249,6 @@ def _insert_rows(conn, rows: list[tuple]):
 
 def _log_etl_run(conn, started_at, snapshot_ts, obserwacje,
                  wstawione, czas_s, status, blad):
-    """Zapis pojedynczej iteracji RT ETL do fakt_etl_run.
-
-    Defensywny rollback na wstępie: jeśli poprzednia operacja zostawiła
-    transakcję w stanie failed (np. _insert_rows się wywalił), audyt
-    i tak musi przejść."""
     try:
         conn.rollback()
         with conn.cursor() as cur:
