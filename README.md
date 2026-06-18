@@ -178,7 +178,7 @@ W komunikacji miejskiej doba nie kończy się o 23:59. Autobus, który wyrusza w
 - **Rozwiązanie**: Podczas przetwarzania Static ETL wyliczany jest parametr `offset_dnia` (dla godziny 25:30 offset wynosi 1, a godzina w bazie to 01:30). Przy zapisie faktu opóźnienia rzeczywista data kursu (`data_kursu`) jest wyliczana jako `data_obserwacji - offset_dnia`. W ten sposób kurs nocny trafia do właściwego worka analitycznego (piątek), nie mieszając się ze statystykami weekendowymi.
 
 ### 3. Szybkie wyszukiwanie trasy w pamięci RAM
-Strumień GTFS-RT (Trip Updates) jest odpytywany w pętli co 20 sekund. Każdy pobrany pakiet niesie około 1000 aktualizacji przystankowych. Chcąc sprawdzić w bazie planowany czas przyjazdu, linię i operatora dla każdego wpisu, musielibyśmy wykonać ponad tysiąc zapytań SQL w każdej iteracji. To tak, jakby listonosz przed dostarczeniem każdego listu wracał na pocztę spytać o nazwisko adresata, zamiast wziąć ze sobą książkę adresową.
+Strumień GTFS-RT (Trip Updates) jest odpytywany w pętli co 20 sekund. Każdy pobrany pakiet niesie około 1000 aktualizacji przystankowych. Chcąc sprawdzić w bazie planowany czas przyjazdu, linię i operatora dla każdego wpisu, musielibyśmy wykonać ponad tysiąc zapytań SQL w każdej iteracji.
 - **Rozwiązanie**: Cały zdenormalizowany rozkład dla aktywnej wersji (ok. 1.4 miliona wierszy, zajmujący ok. 200 MB RAM) jest wczytywany do pamięci słownika Pythona przy uruchomieniu procesu RT ETL. Dzięki temu wyszukiwanie szczegółów kursu odbywa się w czasie O(1) bezpośrednio w pamięci procesu. Dodatkowo proces RT okresowo sprawdza wersję w bazie – jeśli Static ETL wgrał nowy rozkład, cache automatycznie się przeładowuje bez przerywania pętli.
 
 ### 4. Wydajny masowy zapis danych
@@ -186,7 +186,7 @@ Wykonywanie pojedynczych operacji `INSERT` dla tysiąca rekordów co 20 sekund s
 - **Rozwiązanie**: Zaimplementowano zapis masowy. Pobierany pakiet jest formatowany jako ciąg znaków CSV w pamięci podręcznej RAM (`io.StringIO`), przesyłany do bazy za pomocą komendy `COPY` do tymczasowej tabeli przejściowej, a następnie scalany z główną tabelą faktów jednym zapytaniem `INSERT INTO ... SELECT ... ON CONFLICT DO NOTHING`. Rozwiązuje to problem wydajności i eliminuje duplikaty.
 
 ### 5. Kosztowne obliczenia w locie (Agregaty ciągłe)
-Próba wyliczenia punktualności z milionów surowych wierszy bezpośrednio podczas otwierania raportu Power BI skończyłaby się zawieszeniem narzędzia lub wielominutowym oczekiwaniem. To odpowiednik liczenia średniej krajowej pensji poprzez pytanie każdego obywatela na ulicy za każdym razem, gdy chcemy poznać wynik.
+Próba wyliczenia punktualności z milionów surowych wierszy bezpośrednio podczas otwierania raportu Power BI skończyłaby się zawieszeniem narzędzia lub wielominutowym oczekiwaniem.
 - **Rozwiązanie**: Wykorzystano agregaty ciągłe w TimescaleDB. Baza danych automatycznie i przyrostowo przelicza statystyki w tle, zapisując je w oknach 15-minutowych, godzinnych i dziennych. Raport Power BI łączy się tylko z tymi zmaterializowanymi widokami, co pozwala na błyskawiczne renderowanie wykresów.
 
 ### 6. Bezpieczeństwo i retencja danych
