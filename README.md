@@ -242,6 +242,6 @@ Raport łączy się z bazą danych i pobiera dane z widoków agregacji ciągłej
 ![Raport Power BI](docs/assets/powerbi_dashboard.png)
 
 ### 2. Mapa Kepler.gl (`kepler.gl.html`)
-Interaktywny widok mapy 3D, który pozwala zobaczyć rozkład opóźnień w przestrzeni geograficznej Śląska (np. wysokości słupków oznaczają średnie opóźnienie na danym przystanku).
+Interaktywny widok mapy 3D, który pozwala zobaczyć rozkład opóźnień w przestrzeni geograficznej Śląska.
 
 ![Mapa Kepler.gl](docs/assets/kepler_map.png)
